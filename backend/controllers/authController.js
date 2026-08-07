@@ -2,7 +2,12 @@ const User = require('../models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-// 🚨 Nodemailer हटा दिया है! अब हम सीधा API (fetch) का यूज़ करेंगे।
+// --- Startup check: warn if BREVO_API_KEY is missing ---
+if (!process.env.BREVO_API_KEY) {
+    console.error('🚨 CRITICAL: BREVO_API_KEY is not set! OTP emails will fail.');
+} else {
+    console.log('✅ BREVO_API_KEY is set. Email sending is ready.');
+}
 
 // 1. Signup और असली OTP भेजना (Via Brevo API)
 exports.signup = async (req, res) => {
@@ -50,18 +55,26 @@ exports.signup = async (req, res) => {
                 })
             });
 
+            // --- Detailed error logging for easy Render log debugging ---
+            const responseText = await response.text();
             if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(JSON.stringify(errData));
+                console.error(`❌ Brevo API Error — Status: ${response.status}`);
+                console.error(`❌ Brevo Response Body: ${responseText}`);
+                let errData;
+                try { errData = JSON.parse(responseText); } catch { errData = responseText; }
+                throw new Error(`Brevo HTTP ${response.status}: ${typeof errData === 'object' ? JSON.stringify(errData) : errData}`);
             }
 
-            console.log("📧 Real OTP Email Sent Successfully via API!");
+            console.log(`📧 OTP Email Sent Successfully to ${email} via Brevo API!`);
+            console.log(`📬 Brevo Response: ${responseText}`);
             return res.status(200).json({ message: 'OTP sent to your email. Please check your inbox.' });
             
         } catch (apiError) {
-            console.error("❌ Email API Error:", apiError);
+            console.error("❌ Email API Error:", apiError.message);
+            // Delete the user so they can retry signup fresh
+            await User.deleteOne({ email });
             return res.status(500).json({ 
-                message: 'Failed to send OTP email via API.', 
+                message: 'Failed to send OTP email. Please try again in a moment.', 
                 error: apiError.message 
             });
         }
@@ -82,8 +95,13 @@ exports.verifyOTP = async (req, res) => {
             return res.status(400).json({ message: "User not found." });
         }
 
+        // Check OTP expiry
+        if (user.otpExpires && Date.now() > user.otpExpires) {
+            return res.status(400).json({ message: "OTP has expired. Please sign up again to get a new one." });
+        }
+
         if (String(user.otp) !== String(otp)) {
-            return res.status(400).json({ message: "Invalid or expired OTP" });
+            return res.status(400).json({ message: "Invalid OTP. Please check your email and try again." });
         }
 
         user.isVerified = true; 
