@@ -151,7 +151,7 @@ function App() {
               Candy Chat
             </h1>
             <p className="text-slate-400 mt-2 text-sm font-medium">
-              {step === 2 ? 'Security Verification' : (isLogin ? 'आइए-आइए, सरकार' : 'आपका स्वागत है।')}
+              {step === 2 ? 'Security Verification' : (isLogin ? 'WELCOME BACK AGENT!!' : 'HEARTLY WELCOMES YOU!!')}
             </p>
           </div>
 
