@@ -37,10 +37,63 @@ app.get('/', (req, res) => {
 });
 
 // --- 4. API Routes ---
-// हमने App.jsx में /api/users/signup इस्तेमाल किया है, 
-// इसलिए हम userRoutes को इसी पथ पर माउंट कर रहे हैं।
 app.use('/api/users', userRoutes); 
-app.use('/api/auth', authRoutes); // बैकअप के लिए
+app.use('/api/auth', authRoutes);
+
+// --- 4b. Debug: Test Brevo Email ---
+// Usage: GET /api/test-email?to=youremail@gmail.com
+// This lets you check if Brevo is working without going through the signup flow.
+app.get('/api/test-email', async (req, res) => {
+    const toEmail = req.query.to;
+    if (!toEmail) return res.status(400).json({ message: 'Provide ?to=email param' });
+
+    console.log(`🧪 Test email requested to: ${toEmail}`);
+    console.log(`🔑 BREVO_API_KEY present: ${!!process.env.BREVO_API_KEY}`);
+
+    try {
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+                'accept': 'application/json',
+                'api-key': process.env.BREVO_API_KEY,
+                'content-type': 'application/json'
+            },
+            body: JSON.stringify({
+                sender: { name: 'Candy Chat Test', email: 'harikrdbg121@gmail.com' },
+                to: [{ email: toEmail }],
+                subject: 'Candy Chat — Test Email',
+                htmlContent: '<h2>✅ Brevo API is working!</h2><p>Your OTP emails should work fine now.</p>'
+            })
+        });
+
+        const responseText = await response.text();
+        console.log(`📬 Brevo Test Response Status: ${response.status}`);
+        console.log(`📬 Brevo Test Response Body: ${responseText}`);
+
+        let parsed;
+        try { parsed = JSON.parse(responseText); } catch { parsed = responseText; }
+
+        if (!response.ok) {
+            return res.status(response.status).json({
+                success: false,
+                brevoStatus: response.status,
+                brevoResponse: parsed,
+                apiKeySet: !!process.env.BREVO_API_KEY
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `Test email sent to ${toEmail}! Check your inbox.`,
+            brevoStatus: response.status,
+            brevoResponse: parsed
+        });
+
+    } catch (err) {
+        console.error('❌ Test Email Error:', err.message);
+        return res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 // --- 5. Message History API ---
 app.get('/api/messages/:chatId', async (req, res) => {
